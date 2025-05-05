@@ -51,16 +51,19 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
           const body = Buffer.concat(chunks);
           const jsonData = JSON.parse(body);
           const classes = jsonData.data.map(el => extractDataFromJson(el));
+
           cache.set(cacheKey, classes);
 
-          // Очистка кеша при превышении лимита записей
+          // Очистка старого кеша при превышении лимита записей
           const MAX_CACHE_ENTRIES = 1000;
-          if (cache.size > MAX_CACHE_ENTRIES) {
-            console.warn(`[CACHE CLEARED] Cache entry count exceeded limit (${MAX_CACHE_ENTRIES}). Current: ${cache.size}`);
-            cache.clear();
+
+          // 💡 Удаляем старые записи, если превышен лимит
+          while (cache.size > MAX_CACHE_ENTRIES) {
+              const oldestKey = cache.keys().next().value;
+              cache.delete(oldestKey);
+              console.warn(`[CACHE LRU EVICTED] Removed oldest cache entry: ${oldestKey}`);
           }
-
-
+          
           const duration = Date.now() - startTime;
           console.log(`[FETCHED] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
           resolve(classes);
