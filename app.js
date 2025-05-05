@@ -19,16 +19,17 @@ app.use(cors());
 // Роут для возврата JSON данных
 app.get('/api/schedule/current', async (req, res) => {
   try {
-    const { startDate, endDate } = req.query;
-    const jsonData = await getSchedule(startDate, endDate);
-    // console.log(jsonData);
-    res.json(jsonData);
-  }
-  catch {
-    res.statusCode(400);
-  }
+    const { startDate, endDate, useCache = 'true' } = req.query;
+    const useCacheBool = useCache.toLowerCase() === 'true';
 
+    const jsonData = await getSchedule(startDate, endDate, useCacheBool);
+    res.json(jsonData);
+  } catch (e) {
+    console.error('Ошибка при получении расписания:', e);
+    res.status(400).json({ error: 'Ошибка при получении данных' });
+  }
 });
+
 
 // Запуск сервера
 app.listen(PORT, () => {
