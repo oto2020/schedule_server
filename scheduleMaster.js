@@ -14,26 +14,31 @@ const MAX_CACHE_ENTRIES = 100;
 async function getSchedule(startDate, endDate, useCache = true) {
   const startTime = Date.now();
   const cacheKey = `${startDate}_${endDate}`;
+  const now = Date.now();
 
-  if (useCache && cache.has(cacheKey)) {
-    const cached = cache.get(cacheKey);
-    const duration = Date.now() - startTime;
+  const cached = cache.get(cacheKey);
 
-    console.log(`[CACHE HIT] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
+  // Проверяем кеш и его "свежесть"
+  if (useCache && cached) {
+    const isFresh = now - cached.fetchedAtMs < 60 * 1000;
 
-    fetchAndUpdateCache(startDate, endDate, cacheKey).catch(err => {
-      console.error(`[BACKGROUND FETCH ERROR] ${err.message}`);
-    });
+    if (isFresh) {
+      const duration = now - startTime;
+      console.log(`[CACHE HIT] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
 
-    return {
-      data: cached.data,
-      fetchedAt: cached.fetchedAt,
-      fetchedAtHuman: dayjs(cached.fetchedAt).fromNow()
-    };
+      return {
+        data: cached.data,
+        fetchedAt: cached.fetchedAt,
+        fetchedAtHuman: dayjs(cached.fetchedAt).fromNow()
+      };
+    } else {
+      console.log(`[CACHE EXPIRED] Updating data from server...`);
+    }
   }
 
   return fetchAndUpdateCache(startDate, endDate, cacheKey, startTime);
 }
+
 
 function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now()) {
   const options = {
@@ -62,10 +67,12 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
 
           const classes = jsonData.data.map(el => extractDataFromJson(el));
           const fetchedAt = new Date();
+          const fetchedAtMs = Date.now();
 
           const cacheValue = {
             data: classes,
-            fetchedAt
+            fetchedAt,
+            fetchedAtMs
           };
 
           cache.set(cacheKey, cacheValue);
@@ -80,7 +87,6 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
           const duration = Date.now() - startTime;
           console.log(`[FETCHED] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
 
-          console.log(fetchedAt, dayjs(fetchedAt).fromNow());
           resolve({
             data: classes,
             fetchedAt,
@@ -102,6 +108,7 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
     req.end();
   });
 }
+
 
 function extractDataFromJson(jsonData) {
   const { service, employee, start_date, end_date, duration, room, canceled } = jsonData;
