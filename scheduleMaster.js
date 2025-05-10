@@ -1,28 +1,37 @@
-// scheduleMaster.js
 const http = require('follow-redirects').http;
 require('dotenv').config();
 
+const dayjs = require('dayjs');
+const relativeTime = require('dayjs/plugin/relativeTime');
+require('dayjs/locale/ru');
+
+dayjs.extend(relativeTime);
+dayjs.locale('ru');
+
 const cache = new Map();
+const MAX_CACHE_ENTRIES = 100;
 
 async function getSchedule(startDate, endDate, useCache = true) {
   const startTime = Date.now();
   const cacheKey = `${startDate}_${endDate}`;
 
   if (useCache && cache.has(cacheKey)) {
-    // 🔁 Вернуть кэш сразу
-    const cachedData = cache.get(cacheKey);
+    const cached = cache.get(cacheKey);
     const duration = Date.now() - startTime;
-    console.log(`[CACHE HIT] Params: startDate=${startDate}, endDate=${endDate}, useCache=${useCache}, duration=${duration}ms`);
 
-    // ⏳ Фоновое обновление
+    console.log(`[CACHE HIT] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
+
     fetchAndUpdateCache(startDate, endDate, cacheKey).catch(err => {
       console.error(`[BACKGROUND FETCH ERROR] ${err.message}`);
     });
 
-    return cachedData;
+    return {
+      data: cached.data,
+      fetchedAt: cached.fetchedAt,
+      fetchedAtHuman: dayjs(cached.fetchedAt).fromNow()
+    };
   }
 
-  // 🧭 Если кэша нет — обычный fetch
   return fetchAndUpdateCache(startDate, endDate, cacheKey, startTime);
 }
 
@@ -50,23 +59,33 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
         try {
           const body = Buffer.concat(chunks);
           const jsonData = JSON.parse(body);
+
           const classes = jsonData.data.map(el => extractDataFromJson(el));
+          const fetchedAt = new Date();
 
-          cache.set(cacheKey, classes);
+          const cacheValue = {
+            data: classes,
+            fetchedAt
+          };
 
-          // Очистка старого кеша при превышении лимита записей
-          const MAX_CACHE_ENTRIES = 1000;
+          cache.set(cacheKey, cacheValue);
 
-          // 💡 Удаляем старые записи, если превышен лимит
+          // 💡 LRU очистка
           while (cache.size > MAX_CACHE_ENTRIES) {
-              const oldestKey = cache.keys().next().value;
-              cache.delete(oldestKey);
-              console.warn(`[CACHE LRU EVICTED] Removed oldest cache entry: ${oldestKey}`);
+            const oldestKey = cache.keys().next().value;
+            cache.delete(oldestKey);
+            console.warn(`[CACHE LRU EVICTED] Removed oldest cache entry: ${oldestKey}`);
           }
-          
+
           const duration = Date.now() - startTime;
           console.log(`[FETCHED] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
-          resolve(classes);
+
+          console.log(fetchedAt, dayjs(fetchedAt).fromNow());
+          resolve({
+            data: classes,
+            fetchedAt,
+            fetchedAtHuman: dayjs(fetchedAt).fromNow()
+          });
         } catch (err) {
           console.error(`[PARSING ERROR] ${err.message}`);
           reject(err);
@@ -84,13 +103,8 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
   });
 }
 
-
-
 function extractDataFromJson(jsonData) {
   const { service, employee, start_date, end_date, duration, room, canceled } = jsonData;
-
-  const exerciseTitle = service.title;
-  const trainerName = employee.name;
 
   const startDate = new Date(start_date);
   const startTime = start_date.split(' ')[1];
@@ -100,8 +114,8 @@ function extractDataFromJson(jsonData) {
   const dateOfMonth = startDate.getDate();
 
   return {
-    exerciseTitle,
-    trainerName,
+    exerciseTitle: service.title,
+    trainerName: employee.name,
     startTime,
     endTime,
     hour,
