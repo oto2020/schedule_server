@@ -111,6 +111,7 @@ function extractDataFromJson(jsonData) {
   const endTime = end_date.split(' ')[1];
   const hour = startDate.getHours();
   const dayOfWeek = startDate.toLocaleDateString('ru-RU', { weekday: 'long' });
+  const dayOfWeekNumber = (startDate.getDay() + 6) % 7;
   const dateOfMonth = startDate.getDate();
 
   return {
@@ -120,6 +121,7 @@ function extractDataFromJson(jsonData) {
     endTime,
     hour,
     dayOfWeek,
+    dayOfWeekNumber,
     dateOfMonth,
     exerciseDuration: duration,
     roomTitle: room.title,
