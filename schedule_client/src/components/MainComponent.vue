@@ -750,8 +750,8 @@ export default {
   -webkit-transition: all 0.3s ease;
   -o-transition: all 0.3s ease;
   transition: all 0.3s ease;
-  height: 27px;
-  width: 100px;
+  height: 40px;
+  width: 40px;
 }
 .room-button {
   padding: 5px;
