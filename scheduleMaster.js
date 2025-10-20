@@ -21,6 +21,7 @@ async function getSchedule(startDate, endDate, useCache = true) {
 
     console.log(`[CACHE HIT] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
 
+    // Фоновый фетч для обновления кэша
     fetchAndUpdateCache(startDate, endDate, cacheKey).catch(err => {
       console.error(`[BACKGROUND FETCH ERROR] ${err.message}`);
     });
@@ -35,12 +36,76 @@ async function getSchedule(startDate, endDate, useCache = true) {
   return fetchAndUpdateCache(startDate, endDate, cacheKey, startTime);
 }
 
-function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now()) {
+async function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now()) {
+  const dates = [];
+  let currentDate = dayjs(startDate);
+  const end = dayjs(endDate);
+
+  // Генерируем список дат в диапазоне
+  while (currentDate.isBefore(end) || currentDate.isSame(end, 'day')) {
+    dates.push(currentDate.format('YYYY-MM-DD'));
+    currentDate = currentDate.add(1, 'day');
+  }
+
+  console.log(`[FETCHING DAYS] Total days: ${dates.length}, dates: ${dates.join(', ')}`);
+
+  // Отправляем запросы для каждого дня параллельно
+  const fetchPromises = dates.map(date => fetchDayData(date));
+  const results = await Promise.allSettled(fetchPromises);
+
+  // Собираем данные: склеиваем классы и merge titleDescriptions
+  const allClasses = [];
+  const allTitleDescriptions = {};
+
+  results.forEach((result, index) => {
+    const date = dates[index];
+    if (result.status === 'fulfilled' && result.value) {
+      const dayData = result.value;
+      allClasses.push(...dayData.classes);
+      Object.assign(allTitleDescriptions, dayData.titleDescriptions);
+      console.log(`[SUCCESS] Date: ${date}, classes: ${dayData.classes.length}`);
+    } else {
+      console.warn(`[FAILED] Date: ${date}, reason: ${result.reason?.message || 'unknown'}`);
+      // Для неудачного дня — пусто, но ничего не добавляем
+    }
+  });
+
+  const fetchedAt = new Date();
+  const cacheValue = {
+    data: allClasses,
+    fetchedAt
+  };
+
+  cache.set(cacheKey, cacheValue);
+
+  // LRU очистка
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    cache.delete(oldestKey);
+    console.warn(`[CACHE LRU EVICTED] Removed oldest cache entry: ${oldestKey}`);
+  }
+
+  const duration = Date.now() - startTime;
+  console.log(`[FETCHED] Params: startDate=${startDate}, endDate=${endDate}, total classes: ${allClasses.length}, duration=${duration}ms`);
+  console.log(fetchedAt, dayjs(fetchedAt).fromNow());
+  console.log('All titleDescriptions:', allTitleDescriptions);
+
+  return {
+    data: allClasses,
+    fetchedAt,
+    fetchedAtHuman: dayjs(fetchedAt).fromNow()
+  };
+}
+
+function fetchDayData(date) {
+  const startDateTime = `${date}T00:00:00`;
+  const endDateTime = `${date}T23:59:59`;
+
   const options = {
     method: 'GET',
     hostname: process.env.API_HOSTNAME,
     port: process.env.API_PORT,
-    path: `/fitness1c_chat/hs/api/v3/classes/?start_date=${startDate}&end_date=${endDate}&club_id=${process.env.API_CLUB_ID}`,
+    path: `/fitness1c_chat/hs/api/v3/classes/?start_date=${encodeURIComponent(startDateTime)}&end_date=${encodeURIComponent(endDateTime)}&club_id=${encodeURIComponent(process.env.API_CLUB_ID)}`,
     headers: {
       'Content-Type': 'application/json',
       'apikey': process.env.API_KEY,
@@ -58,44 +123,43 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
       res.on("end", () => {
         try {
           const body = Buffer.concat(chunks);
-          const jsonData = JSON.parse(body);
+          const text = body.toString();
 
-          const classes = jsonData.data.map(el => extractDataFromJson(el));
-          const fetchedAt = new Date();
-
-          const cacheValue = {
-            data: classes,
-            fetchedAt
-          };
-
-          cache.set(cacheKey, cacheValue);
-
-          // 💡 LRU очистка
-          while (cache.size > MAX_CACHE_ENTRIES) {
-            const oldestKey = cache.keys().next().value;
-            cache.delete(oldestKey);
-            console.warn(`[CACHE LRU EVICTED] Removed oldest cache entry: ${oldestKey}`);
+          if (!text.startsWith('{')) {
+            console.error(`[RESPONSE IS NOT JSON] Date: ${date}`);
+            console.error(text.substring(0, 500));
+            return resolve({ classes: [], titleDescriptions: {} });
           }
 
-          const duration = Date.now() - startTime;
-          console.log(`[FETCHED] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
+          const jsonData = JSON.parse(text);
 
-          console.log(fetchedAt, dayjs(fetchedAt).fromNow());
-          resolve({
-            data: classes,
-            fetchedAt,
-            fetchedAtHuman: dayjs(fetchedAt).fromNow()
-          });
+          // Если data отсутствует или пустое, возвращаем пусто
+          if (!jsonData.data || !Array.isArray(jsonData.data)) {
+            console.warn(`[EMPTY DATA] Date: ${date}`);
+            return resolve({ classes: [], titleDescriptions: {} });
+          }
+
+          const classes = jsonData.data.map(el => extractDataFromJson(el));
+          const titleDescriptions = {};
+
+          for (let i = 0; i < jsonData.data.length; i++) {
+            let el = extractTitleDescriptionFromJson(jsonData.data[i]);
+            let title = el.title;
+            let description = el.description;
+            titleDescriptions[title] = { title, description };
+          }
+
+          console.log(`[PARSED] Date: ${date}, raw classes: ${jsonData.data.length}, processed: ${classes.length}`);
+          resolve({ classes, titleDescriptions });
         } catch (err) {
-          console.error(`[PARSING ERROR] ${err.message}`);
-          reject(err);
+          console.error(`[PARSING ERROR] Date: ${date}, ${err.message}`);
+          resolve({ classes: [], titleDescriptions: {} });
         }
       });
 
       res.on("error", error => {
-        const duration = Date.now() - startTime;
-        console.error(`[ERROR] Params: startDate=${startDate}, endDate=${endDate}, duration=${duration}ms`);
-        reject(error);
+        console.error(`[REQUEST ERROR] Date: ${date}, ${error.message}`);
+        resolve({ classes: [], titleDescriptions: {} });
       });
     });
 
@@ -103,9 +167,13 @@ function fetchAndUpdateCache(startDate, endDate, cacheKey, startTime = Date.now(
   });
 }
 
+function extractTitleDescriptionFromJson(jsonData) {
+  return { title: jsonData.service.title, description: jsonData.service.description };
+}
+
 function extractDataFromJson(jsonData) {
   const { service, employee, start_date, end_date, duration, room, canceled } = jsonData;
-
+  const date = start_date.split(' ')[0];
   const startDate = new Date(start_date);
   const startTime = start_date.split(' ')[1];
   const endTime = end_date.split(' ')[1];
@@ -117,6 +185,7 @@ function extractDataFromJson(jsonData) {
   return {
     exerciseTitle: service.title,
     trainerName: employee.name,
+    date,
     startTime,
     endTime,
     hour,

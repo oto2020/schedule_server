@@ -1,2 +1,42 @@
 node_modules
 .env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors/IDE
+.vscode/
+.idea/
+*.swp
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Env files
+.env.*
+!.env.example
+
+# Client app (Vue)
+schedule_client/node_modules/
+schedule_client/dist/
+schedule_client/.cache/
+schedule_client/node_modules/.cache/
+
+# Test coverage
+coverage/
+
+# Temp
+*.local
+*.tmp
+.temp/
+.tmp/
+
+# OS trash
+.Spotlight-V100
+.Trashes
