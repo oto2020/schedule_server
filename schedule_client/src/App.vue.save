@@ -1,0 +1,42 @@
+<template>
+  <MainComponent/>
+</template>
+
+<script>
+import MainComponent from './components/MainComponent.vue'
+
+export default {
+  name: 'App',
+  components: {
+    MainComponent
+  }
+}
+</script>
+
+<style>
+#app {
+  /* font-family: Avenir, Helvetica, Arial, sans-serif; */
+  font-family: 'GothamPro', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-align: center;
+  color: #2c3e50;
+}
+
+@font-face {
+    font-family: 'GothamPro';
+    src: url('assets\\gothampro.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+}
+
+body {
+    font-family: 'GothamPro', sans-serif;
+    /* Используйте здесь название, которое вы задали в font-family */
+    margin: 0;
+    padding: 0;
+    background-color: #f5f5f5;
+    overflow-x: hidden;
+}
+
+</style>
