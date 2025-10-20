@@ -113,7 +113,7 @@
           {{ this.computedAllowedRoomTitles.join(', ') }}
         </div>
         <div class="ms-auto">
-          <button class="btn" @click="forceRefresh">
+          <button class="btn logo-btn" @click="forceRefresh">
             <img v-if="schedule" class="g1logo" :src="require('@/g1logo.png')" alt="Пример изображения">
             <div v-else class="mr-1"><font-awesome-icon icon="spinner" size="lg" spin /></div>
           </button>
@@ -746,12 +746,21 @@ export default {
   height: 27px;
   width: 27px;
 }
+.logo-btn {
+  padding: 0;
+  height: 40px;
+  width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .g1logo {
   -webkit-transition: all 0.3s ease;
   -o-transition: all 0.3s ease;
   transition: all 0.3s ease;
-  height: 40px;
-  width: 40px;
+  height: 100%;
+  width: 100%;
+  object-fit: contain;
 }
 .room-button {
   padding: 5px;
